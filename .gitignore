@@ -53,6 +53,7 @@ coverage.*
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # Certificates
 *.pfx

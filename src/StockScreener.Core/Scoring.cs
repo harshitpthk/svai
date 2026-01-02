@@ -4,6 +4,57 @@ namespace StockScreener.Core;
 
 public static class Scoring
 {
+    public sealed record ScoreBreakdown(
+        double ValueRaw,
+        double QualityRaw,
+        double MomentumRaw,
+        double OptionsRaw,
+        double MacroRaw,
+        ScoringWeights Weights,
+        Score WeightedScore
+    )
+    {
+        public double TotalRaw => ValueRaw + QualityRaw + MomentumRaw + OptionsRaw + MacroRaw;
+    }
+
+    public static ScoreBreakdown Explain(
+        Fundamentals f,
+        IReadOnlyList<PriceBar> prices,
+        OptionsSnapshot? opt,
+        MacroSnapshot macro,
+        ScoringWeights w)
+    {
+        // Mirror Compute() logic so we can show the unweighted components.
+        double value = (double)(f.FcfYield - f.Pe / 100m - f.Pb / 10m - f.EvToEbitda / 20m);
+        double quality = (double)(f.Roic / 10m + f.GrossMargin / 50m - f.NetDebtToEbitda / 5m);
+        double momentum = RecentMomentum(prices);
+        double options = opt is null ? 0 : (
+            (double)(1m - opt.PutCallRatio) +
+            (opt.ImpliedVolRank is >= 0 and <= 100 ? 1 - Math.Abs((double)opt.ImpliedVolRank - 40) / 60 : 0) +
+            (double)(opt.CallVolumeToAvg20d - 1) +
+            (double)opt.NearOtMCallOiDelta);
+        double macroFit = MacroSectorTilt(f.Sector, macro);
+
+        var weighted = new Score
+        {
+            Value = value * w.Value,
+            Quality = quality * w.Quality,
+            Momentum = momentum * w.Momentum,
+            Options = options * w.Options,
+            Macro = macroFit * w.Macro
+        };
+
+        return new ScoreBreakdown(
+            ValueRaw: value,
+            QualityRaw: quality,
+            MomentumRaw: momentum,
+            OptionsRaw: options,
+            MacroRaw: macroFit,
+            Weights: w,
+            WeightedScore: weighted
+        );
+    }
+
     public static Score Compute(
         Fundamentals f,
         IReadOnlyList<PriceBar> prices,

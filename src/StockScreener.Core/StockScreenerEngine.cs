@@ -2,5 +2,155 @@
 
 public class StockScreenerEngine
 {
+    private readonly IPriceDataProvider _prices;
+    private readonly IFundamentalsProvider _fundamentals;
+    private readonly IMacroDataProvider _macro;
+    private readonly IOptionsDataProvider _options;
 
+    public StockScreenerEngine(
+        IPriceDataProvider prices,
+        IFundamentalsProvider fundamentals,
+        IMacroDataProvider macro,
+        IOptionsDataProvider options)
+    {
+        _prices = prices;
+        _fundamentals = fundamentals;
+        _macro = macro;
+        _options = options;
+    }
+
+    public async Task<IReadOnlyList<ScreenResult>> ScreenAsync(ScreenRequest req, CancellationToken ct = default)
+    {
+        if (req is null) throw new ArgumentNullException(nameof(req));
+        if (req.Tickers is null || req.Tickers.Count == 0) return Array.Empty<ScreenResult>();
+        if (req.End < req.Start) throw new ArgumentException("End must be >= Start");
+
+        // Snapshot macro once per run. Treat macro as optional in v0.
+        MacroSnapshot m;
+        try
+        {
+            m = await _macro.GetSnapshotAsync(ct);
+        }
+        catch
+        {
+            // Neutral-ish defaults that yield MacroSectorTilt ~ 0 for most sectors.
+            m = new MacroSnapshot(
+                TenYearYield: 0m,
+                TwoTenSpread: 0m,
+                CpiYoY: 3m,
+                Pmi: 50m,
+                Dxy: 100m,
+                Wti: 0m
+            );
+        }
+
+        var results = new List<ScreenResult>(req.Tickers.Count);
+
+        foreach (var raw in req.Tickers)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(raw))
+                continue;
+
+            var t = raw.Trim().ToUpperInvariant();
+
+            Fundamentals? f;
+            IReadOnlyList<PriceBar> p;
+
+            try
+            {
+                f = await _fundamentals.GetAsync(t, ct);
+                if (f is null) continue;
+
+                p = await _prices.GetDailyAsync(t, req.Start, req.End, ct);
+                if (p.Count == 0) continue;
+            }
+            catch
+            {
+                // v0 engine: swallow per-ticker errors and continue.
+                continue;
+            }
+
+            // Apply optional filters before doing any optional/expensive work (like options).
+            if (req.Filters is not null && !req.Filters.Matches(f, p))
+                continue;
+
+            // Options can be expensive / unavailable; treat null as fine.
+            OptionsSnapshot? opt = null;
+            try
+            {
+                opt = await _options.GetSnapshotAsync(t, ct);
+            }
+            catch
+            {
+                opt = null;
+            }
+
+            var s = Scoring.Compute(f, p, opt, m, req.Weights);
+
+            results.Add(new ScreenResult
+            {
+                Ticker = t,
+                Fundamentals = f,
+                Prices = p,
+                Score = s,
+                Macro = m,
+                Options = opt
+            });
+        }
+
+        return results;
+    }
+}
+
+public sealed class ScreenResult
+{
+    public required string Ticker { get; init; }
+    public required Fundamentals Fundamentals { get; init; }
+    public required IReadOnlyList<PriceBar> Prices { get; init; }
+    public required Score Score { get; init; }
+
+    public required MacroSnapshot Macro { get; init; }
+    public OptionsSnapshot? Options { get; init; }
+}
+
+public sealed class ScreenRequest
+{
+    public required IReadOnlyList<string> Tickers { get; init; }
+    public required DateOnly Start { get; init; }
+    public required DateOnly End { get; init; }
+    public required ScoringWeights Weights { get; init; }
+
+    public ScreenFilters? Filters { get; init; }
+}
+
+public sealed record ScreenFilters(
+    decimal? MinFcfYield = null,
+    decimal? MaxPe = null,
+    decimal? MinRoic = null,
+    decimal? MaxNetDebtToEbitda = null,
+    double? MinMomentum = null)
+{
+    public bool Matches(Fundamentals f, IReadOnlyList<PriceBar> prices)
+    {
+        if (MinFcfYield is not null && f.FcfYield < MinFcfYield.Value) return false;
+        if (MaxPe is not null && f.Pe > MaxPe.Value) return false;
+        if (MinRoic is not null && f.Roic < MinRoic.Value) return false;
+        if (MaxNetDebtToEbitda is not null && f.NetDebtToEbitda > MaxNetDebtToEbitda.Value) return false;
+
+        if (MinMomentum is not null)
+        {
+            // 20d momentum in the same shape as Scoring.RecentMomentum.
+            if (prices.Count < 21) return false;
+            var last = prices[^1].Close;
+            var prev = prices[^21].Close;
+            if (prev <= 0) return false;
+
+            var mom = (double)((last - prev) / prev);
+            if (mom < MinMomentum.Value) return false;
+        }
+
+        return true;
+    }
 }

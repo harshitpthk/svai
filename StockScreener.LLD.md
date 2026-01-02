@@ -4,119 +4,231 @@
 
 This repository is a .NET solution organized into three main layers:
 
-- **`StockScreener.Cli`**: Console application (Spectre.Console.Cli) that hosts commands.
-- **`StockScreener.Core`**: Domain layer (interfaces + scoring model + shared records).
-- **`StockScreener.Data`**: Integration layer (market data providers).
+- **`StockScreener.Cli`**: Console application (Spectre.Console.Cli) hosting commands.
+- **`StockScreener.Core`**: Domain layer (interfaces + records + scoring + orchestration).
+- **`StockScreener.Data`**: Integration layer (market data providers for prices/fundamentals/macro/options).
 
 ### What works today
 
-- The solution builds.
-- A `prices` command is implemented and runnable.
-- Price data providers exist for:
-  - **Stooq** (default; no API key required)
-  - Yahoo (unofficial endpoint)
-  - Alpha Vantage (requires `Providers:AlphaVantageApiKey`)
+- The solution builds and runs.
+- Commands implemented:
+  - `prices` — fetch OHLCV bars
+  - `options` — fetch a lightweight options snapshot (may return null)
+  - `doctor` — show provider selection and config/secret diagnostics
+  - `screen` — v0 screening workflow + `--explain` breakdown
+- Screening orchestration lives in `StockScreener.Core.StockScreenerEngine`.
+- Simple CLI filters are supported and applied in the engine.
+- Unit tests exist for filters and scoring consistency.
 
-### What is still missing
+### Known gaps / limitations
 
-- A screening workflow/engine that orchestrates: fundamentals + price history + options + macro + scoring.
-- Providers for `IFundamentalsProvider`, `IOptionsDataProvider`, and `IMacroDataProvider`.
-- CLI commands like `screen`, `explain`, etc.
+- Scoring is a toy heuristic (not normalized / not sector-zscored).
+- Options provider may be unavailable on certain Polygon plans (403 entitlement); config fallback returns null.
+- FRED macro snapshots can intermittently error per-series; the engine treats macro as optional and falls back to neutral values.
 
 ## CLI entrypoint + Hosting
 
-`StockScreener.Cli/Program.cs` uses the **Generic Host** to set up:
+`src/StockScreener.Cli/Program.cs` uses the **Generic Host** to set up:
 
-- Configuration (`appsettings.json` + environment variables)
+- Configuration: CLI-local `appsettings.json` + environment variables + `.env` (DotNetEnv)
 - Logging (console)
-- Dependency Injection container (`IServiceProvider`)
+- Dependency Injection container
 
 Spectre.Console.Cli runs commands and uses a small adapter (`TypeRegistrar`) so commands can be constructed via Microsoft DI.
+
+> Important: the CLI sets a deterministic content root so `appsettings.json` loads correctly even when running from other working directories.
+
+## Core model
+
+Defined in `src/StockScreener.Core/Abstractions.cs`:
+
+- Provider interfaces:
+  - `IPriceDataProvider`
+  - `IFundamentalsProvider`
+  - `IMacroDataProvider`
+  - `IOptionsDataProvider`
+- Records:
+  - `PriceBar`
+  - `Fundamentals`
+  - `MacroSnapshot`
+  - `OptionsSnapshot`
+  - `ScoringWeights`
+  - `Score`
+
+## Scoring
+
+Implemented in `src/StockScreener.Core/Scoring.cs`:
+
+- `Scoring.Compute(...)` — returns a weighted `Score`
+- `Scoring.Explain(...)` — mirrors compute logic but returns a `ScoreBreakdown` (raw components + weighted score)
+
+Macro impact is currently a toy heuristic (`MacroSectorTilt`) using the sector and macro snapshot values.
+
+## Screening orchestration
+
+Implemented in `src/StockScreener.Core/StockScreenerEngine.cs`.
+
+Inputs:
+
+- `ScreenRequest`
+  - `Tickers`, `Start`, `End`, `Weights`
+  - `Filters` (optional)
+
+Outputs:
+
+- `ScreenResult`
+  - `Ticker`, `Fundamentals`, `Prices`, `Score`
+  - `Macro` and `Options` actually used during scoring (for explain-mode fidelity)
+
+Behavior (v0):
+
+- Snapshot macro once per run.
+  - If macro fails: use neutral defaults (keeps macro contribution ~0).
+- For each ticker:
+  - Fetch fundamentals + prices.
+  - Apply optional `ScreenFilters`.
+  - Best-effort fetch options snapshot.
+  - Compute score.
+
+## Filters
+
+Defined in `StockScreener.Core` as `ScreenFilters`:
+
+- `MinFcfYield`
+- `MaxPe`
+- `MinRoic`
+- `MaxNetDebtToEbitda`
+- `MinMomentum` (20d momentum)
+
+Filters are applied in `StockScreenerEngine` before options/scoring.
 
 ## Commands
 
 ### `prices`
 
-Implemented in `StockScreener.Cli/Commands/PricesCommand.cs`.
+`src/StockScreener.Cli/Commands/PricesCommand.cs`
 
-Purpose:
-- Fetch daily OHLCV bars for a ticker using `IPriceDataProvider`.
-- Print results as a table.
+- Uses `IPriceDataProvider`
+- Prints OHLCV table
 
-Examples:
-- `svai prices AAPL --days 30`
-- `svai prices MSFT --start 2025-01-01 --end 2025-03-01`
+### `options`
+
+`src/StockScreener.Cli/Commands/OptionsCommand.cs`
+
+- Uses `IOptionsDataProvider`
+- Prints snapshot or a [33mno data[0m message (provider returned null)
+
+### `doctor`
+
+`src/StockScreener.Cli/Commands/DoctorCommand.cs`
+
+- Prints:
+  - configured providers (from config)
+  - effective provider types (from DI)
+  - API key presence (masked)
+  - (verbose) config source tracing (json/env)
+
+### `screen`
+
+`src/StockScreener.Cli/Commands/ScreenCommand.cs`
+
+- Uses `StockScreenerEngine`
+- Renders ranked results table
+- `--explain <TICKER>` renders:
+  - fundamentals table
+  - factor raw + weighted breakdown
+  - options presence
 
 ## Provider selection
 
-`IPriceDataProvider` is resolved at runtime based on:
+Provider selection happens in `src/StockScreener.Cli/Program.cs` using config keys:
 
-- `Providers:PriceProvider` in `appsettings.json`
+- `Providers:PriceProvider`
+- `Providers:FundamentalsProvider`
+- `Providers:MacroProvider`
+- `Providers:OptionsProvider`
 
-Supported values:
-- `Stooq` (default/fallback)
-- `Yahoo`
-- `AlphaVantage` (or `alpha`, `alpha-vantage`)
+Fallback behavior favors:
+
+- config-specified provider if possible
+- otherwise a safe default (e.g., Stooq for prices, config fallback for options)
+
+## Data providers (high-level)
+
+- Prices:
+  - `StooqPriceProvider` (CSV; no key)
+  - `YahooPriceProvider` (unofficial)
+- Fundamentals:
+  - `AlphaVantageFundamentalsProvider`
+- Macro:
+  - `FredMacroDataProvider`
+- Options:
+  - `PolygonOptionsDataProvider` (may be entitlement-gated)
+  - `ConfigStockOptionsDataProvider` (returns null)
+
+## Tests
+
+`tests/StockScreener.Tests` (xUnit + FluentAssertions)
+
+- `ScoringTests` covers:
+  - `ScreenFilters.Matches(...)` behavior
+  - `Scoring.Explain(...)` vs `Scoring.Compute(...)` consistency
+  - basic macro sector tilt expectations
 
 ## Architecture diagram
 
 ```mermaid
 flowchart TD
   subgraph CLI["StockScreener.Cli (Console App)"]
-    P["Program.cs\nGeneric Host\nDI + Config + Logging"]
+    P["Program.cs\nGeneric Host\nDI + Config + Logging\n.env via DotNetEnv"]
     CMD["Spectre CommandApp\nCommands"]
-    PRICES["PricesCommand\n(prices)"]
-    CFG["appsettings.json\nProviders:PriceProvider\nProviders:AlphaVantageApiKey\nScoring:Weights"]
-  end
-
-  subgraph HOST["Generic Host"]
-    H["IHost"]
-    SP["IServiceProvider (DI)"]
-    IC["IConfiguration"]
-    LG["ILogger<T>"]
+    PRICES["PricesCommand"]
+    OPTS["OptionsCommand"]
+    DOC["DoctorCommand"]
+    SCREEN["ScreenCommand"]
+    CFG["appsettings.json + env\nProviders:* + Scoring:Weights"]
   end
 
   subgraph CORE["StockScreener.Core"]
+    Eng["StockScreenerEngine\nScreenAsync(request)"]
+    Filters["ScreenFilters\nMatches(fundamentals, prices)"]
     IPrice["IPriceDataProvider"]
-    Types["PriceBar, Fundamentals,\nMacroSnapshot, ScoringWeights, Score"]
-    Sc["Scoring.Compute(...)"]
-    Eng["StockScreenerEngine (placeholder)"]
+    IFund["IFundamentalsProvider"]
+    IMacro["IMacroDataProvider"]
+    IOpt["IOptionsDataProvider"]
+    Sc["Scoring.Compute/Explain"]
+    Types["Records: PriceBar, Fundamentals,\nMacroSnapshot, OptionsSnapshot, Score"]
   end
 
   subgraph DATA["StockScreener.Data"]
-    Yahoo["YahooPriceProvider"]
     Stooq["StooqPriceProvider"]
-    AV["AlphaVantagePriceProvider"]
+    Yahoo["YahooPriceProvider"]
+    AVF["AlphaVantageFundamentalsProvider"]
+    Fred["FredMacroDataProvider"]
+    Poly["PolygonOptionsDataProvider"]
+    OptCfg["ConfigStockOptionsDataProvider"]
   end
 
-  subgraph INFRA["Infra (via DI)"]
-    Http["HttpClient (typed)"]
-    Cache["IMemoryCache"]
-  end
+  P --> CMD
+  CMD --> PRICES --> IPrice
+  CMD --> OPTS --> IOpt
+  CMD --> DOC
+  CMD --> SCREEN --> Eng
 
-  P --> H
-  H --> SP
-  H --> IC
-  H --> LG
-
-  CMD --> PRICES
-  PRICES --> IPrice
-
-  SP --> PRICES
-  SP --> Yahoo
-  SP --> Stooq
-  SP --> AV
-  SP --> Http
-  SP --> Cache
-
-  IC --> AV
-  CFG --> IC
-
-  Yahoo --> IPrice
-  Stooq --> IPrice
-  AV --> IPrice
-
-  IPrice --> Types
-  Sc --> Types
+  Eng --> IFund
+  Eng --> IPrice
+  Eng --> IMacro
+  Eng --> Filters
+  Eng --> IOpt
   Eng --> Sc
+
+  Stooq --> IPrice
+  Yahoo --> IPrice
+  AVF --> IFund
+  Fred --> IMacro
+  Poly --> IOpt
+  OptCfg --> IOpt
+
+  CFG --> P
+  Types --> Sc
 ```
