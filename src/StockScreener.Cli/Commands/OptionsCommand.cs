@@ -7,15 +7,21 @@ namespace StockScreener.Cli.Commands;
 
 public sealed class OptionsCommand(IOptionsDataProvider options, ILogger<OptionsCommand> logger) : AsyncCommand<OptionsCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<TICKER>")]
+        [System.ComponentModel.Description("Ticker symbol (e.g. AAPL, MSFT).")]
         public required string Ticker { get; init; }
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var snap = await options.GetSnapshotAsync(settings.Ticker, cancellationToken);
+        var snap = await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("green"))
+            .StartAsync($"Fetching options for [bold]{Markup.Escape(settings.Ticker)}[/]...", async _ =>
+                await options.GetSnapshotAsync(settings.Ticker, cancellationToken));
+
         if (snap is null)
         {
             AnsiConsole.MarkupLine("[yellow]No options snapshot available (provider returned null).[/]");

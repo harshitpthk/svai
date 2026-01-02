@@ -6,18 +6,22 @@ namespace StockScreener.Cli.Commands;
 
 public sealed class PricesCommand(IPriceDataProvider prices) : AsyncCommand<PricesCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<TICKER>")]
+        [System.ComponentModel.Description("Ticker symbol (e.g. AAPL, MSFT).")]
         public string Ticker { get; init; } = "";
 
         [CommandOption("--start <START>")]
+        [System.ComponentModel.Description("Start date (inclusive). Format: yyyy-MM-dd.")]
         public DateTime? Start { get; init; }
 
         [CommandOption("--end <END>")]
+        [System.ComponentModel.Description("End date (inclusive). Format: yyyy-MM-dd. Defaults to today.")]
         public DateTime? End { get; init; }
 
         [CommandOption("--days <DAYS>")]
+        [System.ComponentModel.Description("Convenience window size. If set, start date defaults to today - DAYS.")]
         public int? Days { get; init; }
 
         public override ValidationResult Validate()
@@ -43,7 +47,11 @@ public sealed class PricesCommand(IPriceDataProvider prices) : AsyncCommand<Pric
         var startDate = DateOnly.FromDateTime(start);
         var endDate = DateOnly.FromDateTime(end);
 
-        var bars = await prices.GetDailyAsync(settings.Ticker, startDate, endDate, cancellationToken);
+        var bars = await AnsiConsole.Status()
+            .Spinner(Spinner.Known.Dots)
+            .SpinnerStyle(Style.Parse("green"))
+            .StartAsync($"Fetching prices for [bold]{Markup.Escape(settings.Ticker)}[/]...", async _ =>
+                await prices.GetDailyAsync(settings.Ticker, startDate, endDate, cancellationToken));
 
         if (bars.Count == 0)
         {

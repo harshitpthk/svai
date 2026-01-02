@@ -33,6 +33,12 @@ class Program
             {
                 logging.ClearProviders();
                 logging.AddConsole();
+
+                // Keep CLI output clean by default.
+                logging.SetMinimumLevel(LogLevel.Warning);
+
+                // Still allow HttpClientFactory internal warnings/errors through.
+                logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
             })
             .ConfigureServices((ctx, services) =>
             {

@@ -11,33 +11,42 @@ public sealed class ScreenCommand(
     StockScreenerEngine engine,
     ILogger<ScreenCommand> logger) : AsyncCommand<ScreenCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<TICKERS>")]
+        [System.ComponentModel.Description("Comma-separated tickers (e.g. AAPL,MSFT,GOOG).")]
         public required string Tickers { get; init; }
 
         [CommandOption("--days <DAYS>")]
+        [System.ComponentModel.Description("Lookback window (days) used for price history and momentum calculations.")]
         public int Days { get; init; } = 90;
 
         [CommandOption("--top <N>")]
+        [System.ComponentModel.Description("How many top-ranked tickers to display.")]
         public int Top { get; init; } = 10;
 
         [CommandOption("--explain <TICKER>")]
+        [System.ComponentModel.Description("Show a scoring breakdown for a single ticker from the result set.")]
         public string? Explain { get; init; }
 
         [CommandOption("--min-fcf-yield <YIELD>")]
+        [System.ComponentModel.Description("Filter: minimum free cash flow yield (e.g. 0.05 for 5%).")]
         public decimal? MinFcfYield { get; init; }
 
         [CommandOption("--max-pe <PE>")]
+        [System.ComponentModel.Description("Filter: maximum P/E ratio.")]
         public decimal? MaxPe { get; init; }
 
         [CommandOption("--min-roic <ROIC>")]
+        [System.ComponentModel.Description("Filter: minimum ROIC (e.g. 0.10 for 10%).")]
         public decimal? MinRoic { get; init; }
 
         [CommandOption("--max-netdebt-ebitda <X>")]
+        [System.ComponentModel.Description("Filter: maximum net debt / EBITDA multiple.")]
         public decimal? MaxNetDebtToEbitda { get; init; }
 
         [CommandOption("--min-momentum <R>")]
+        [System.ComponentModel.Description("Filter: minimum momentum over the lookback window (e.g. 0.20 for +20%).")]
         public double? MinMomentum { get; init; }
 
         public override ValidationResult Validate()
@@ -114,7 +123,8 @@ public sealed class ScreenCommand(
         {
             results = await AnsiConsole.Status()
                 .Spinner(Spinner.Known.Dots)
-                .StartAsync("Screening tickers...", async _ =>
+                .SpinnerStyle(Style.Parse("green"))
+                .StartAsync($"Screening [bold]{tickers.Length}[/] ticker(s)...", async _ =>
                 {
                     var req = new ScreenRequest
                     {
