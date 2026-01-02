@@ -52,7 +52,7 @@ make uninstall
 This is convenient for development machines because it pins the tool in a repo-local manifest.
 
 ```bash
-make tool-install
+make svai-install
 # run:
 dotnet tool run svai -- --help
 # or (dotnet supports this shorthand for local tools):
@@ -62,7 +62,7 @@ dotnet svai -- --help
 Uninstall:
 
 ```bash
-make tool-uninstall
+make svai-uninstall
 ```
 
 ## Run

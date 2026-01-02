@@ -1,4 +1,4 @@
-.PHONY: help install uninstall publish tool-install tool-uninstall
+.PHONY: help install uninstall publish svai-install svai-uninstall
 
 # Default install prefix for 'make install'. Override like:
 #   make install PREFIX=$$HOME/.local
@@ -13,8 +13,8 @@ help:
 	@echo "  make publish         Publish Release build to ./out/svai (binary: svai)"
 	@echo "  make install         Install symlink to $(BINDIR)/svai (uses install.sh)"
 	@echo "  make uninstall       Remove $(BINDIR)/svai (uses uninstall.sh)"
-	@echo "  make tool-install    Install svai as a local dotnet tool (to ~/.dotnet/tools)"
-	@echo "  make tool-uninstall  Uninstall svai dotnet tool"
+	@echo "  make svai-install    Install svai as a local dotnet tool (repo manifest)"
+	@echo "  make svai-uninstall  Uninstall svai dotnet tool (repo manifest)"
 
 publish:
 	dotnet publish -c Release -o ./out/svai ./src/StockScreener.Cli/StockScreener.Cli.csproj
@@ -30,7 +30,7 @@ uninstall:
 #
 # NOTE: Requires 'dotnet tool install --add-source <path>' because we're installing
 # from a local packed .nupkg.
-tool-install:
+svai-install:
 	@mkdir -p .config
 	@if [ ! -f .config/dotnet-tools.json ]; then dotnet new tool-manifest >/dev/null; fi
 	@rm -rf ./out/tool
@@ -40,5 +40,5 @@ tool-install:
 		dotnet tool update svai --tool-manifest .config/dotnet-tools.json --add-source ./out/tool
 	@echo "Installed. Run: dotnet tool run svai --help"
 
-tool-uninstall:
+svai-uninstall:
 	@dotnet tool uninstall svai --tool-manifest .config/dotnet-tools.json || true
