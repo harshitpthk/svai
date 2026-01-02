@@ -25,6 +25,16 @@
     <Nullable>enable</Nullable>
 
     <AssemblyName>svai</AssemblyName>
+
+    <!-- Dotnet tool packaging (for local tool manifest installs) -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>svai</ToolCommandName>
+    <PackageId>svai</PackageId>
+    <PackageTitle>svai</PackageTitle>
+    <Description>svai (Stock Screener) CLI</Description>
+    <Authors>harshitpthk</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/harshitpthk/svai</RepositoryUrl>
   </PropertyGroup>
 
 </Project>

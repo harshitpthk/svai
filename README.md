@@ -13,6 +13,58 @@ A small .NET CLI for fetching market data and running a v0 screening workflow (p
 
 - .NET SDK (targets `net10.0`)
 
+## Install (macOS/Linux)
+
+### Option A: install via scripts (recommended)
+
+This repo includes helper scripts that publish and install `svai` onto your `PATH` via a symlink.
+
+Default install location: `/usr/local/bin/svai`.
+
+```bash
+./install.sh
+```
+
+Uninstall:
+
+```bash
+./uninstall.sh
+```
+
+If you prefer a user-local install (no sudo), use:
+
+```bash
+PREFIX=~/.local ./install.sh
+PREFIX=~/.local ./uninstall.sh
+# ensure ~/.local/bin is on your PATH
+```
+
+### Option B: Makefile shortcuts
+
+```bash
+make publish
+make install
+make uninstall
+```
+
+### Option C: dotnet tool-style install (local tool manifest)
+
+This is convenient for development machines because it pins the tool in a repo-local manifest.
+
+```bash
+make tool-install
+# run:
+dotnet tool run svai -- --help
+# or (dotnet supports this shorthand for local tools):
+dotnet svai -- --help
+```
+
+Uninstall:
+
+```bash
+make tool-uninstall
+```
+
 ## Run
 
 Show CLI help:
