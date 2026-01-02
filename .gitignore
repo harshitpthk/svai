@@ -1,6 +1,7 @@
 # Build outputs
 **/bin/
 **/obj/
+**/out/
 
 # User-specific files
 *.user
