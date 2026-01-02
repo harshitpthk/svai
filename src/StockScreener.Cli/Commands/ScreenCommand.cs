@@ -121,11 +121,29 @@ public sealed class ScreenCommand(
 
         try
         {
-            results = await AnsiConsole.Status()
-                .Spinner(Spinner.Known.Dots)
-                .SpinnerStyle(Style.Parse("green"))
-                .StartAsync($"Screening [bold]{tickers.Length}[/] ticker(s)...", async _ =>
+            ScreenProgress last = new("", 0, tickers.Length);
+
+            results = await AnsiConsole.Progress()
+                .AutoClear(true)
+                .HideCompleted(false)
+                .Columns(
+                    new ProgressBarColumn(),
+                    new PercentageColumn(),
+                    new SpinnerColumn(),
+                    new TaskDescriptionColumn())
+                .StartAsync(async ctx =>
                 {
+                    var task = ctx.AddTask("Screening tickers", maxValue: tickers.Length);
+
+                    var progress = new Progress<ScreenProgress>(p =>
+                    {
+                        last = p;
+                        task.Value = p.Completed;
+                        task.Description = string.IsNullOrWhiteSpace(p.Ticker)
+                            ? $"Screening tickers ({p.Completed}/{p.Total})"
+                            : $"Screening [bold]{Markup.Escape(p.Ticker)}[/] ({p.Completed}/{p.Total})";
+                    });
+
                     var req = new ScreenRequest
                     {
                         Tickers = tickers,
@@ -135,7 +153,13 @@ public sealed class ScreenCommand(
                         Filters = effectiveFilters
                     };
 
-                    return await engine.ScreenAsync(req, cancellationToken);
+                    var r = await engine.ScreenAsync(req, cancellationToken, progress);
+
+                    // Ensure the bar completes even if progress callbacks didn't fire for some edge case.
+                    task.Value = tickers.Length;
+                    task.StopTask();
+
+                    return r;
                 });
         }
         catch (Exception ex)

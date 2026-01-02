@@ -1,5 +1,7 @@
 ﻿namespace StockScreener.Core;
 
+public sealed record ScreenProgress(string Ticker, int Completed, int Total);
+
 public class StockScreenerEngine
 {
     private readonly IPriceDataProvider _prices;
@@ -19,7 +21,10 @@ public class StockScreenerEngine
         _options = options;
     }
 
-    public async Task<IReadOnlyList<ScreenResult>> ScreenAsync(ScreenRequest req, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ScreenResult>> ScreenAsync(
+        ScreenRequest req,
+        CancellationToken ct = default,
+        IProgress<ScreenProgress>? progress = null)
     {
         if (req is null) throw new ArgumentNullException(nameof(req));
         if (req.Tickers is null || req.Tickers.Count == 0) return Array.Empty<ScreenResult>();
@@ -46,14 +51,23 @@ public class StockScreenerEngine
 
         var results = new List<ScreenResult>(req.Tickers.Count);
 
+        var total = req.Tickers.Count;
+        var completed = 0;
+
         foreach (var raw in req.Tickers)
         {
             ct.ThrowIfCancellationRequested();
 
+            completed++;
+
             if (string.IsNullOrWhiteSpace(raw))
+            {
+                progress?.Report(new ScreenProgress("", completed, total));
                 continue;
+            }
 
             var t = raw.Trim().ToUpperInvariant();
+            progress?.Report(new ScreenProgress(t, completed, total));
 
             Fundamentals? f;
             IReadOnlyList<PriceBar> p;
