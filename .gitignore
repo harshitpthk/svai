@@ -1,0 +1,65 @@
+# Build outputs
+**/bin/
+**/obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+
+# Test results
+TestResults/
+
+# Coverage
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/packages/
+
+# Dotnet tools / local
+.dotnet/
+
+# OS / temp
+*.tmp
+*.temp
+*.swp
+*~
+
+# Environment / secrets
+.env
+.env.*
+
+# Certificates
+*.pfx
+*.cer
+
+# Node (if ever used)
+node_modules/
+
+# Jupyter (if ever used)
+.ipynb_checkpoints/

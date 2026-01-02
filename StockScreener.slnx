@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StockScreener.Cli/StockScreener.Cli.csproj" />
+    <Project Path="src/StockScreener.Core/StockScreener.Core.csproj" />
+    <Project Path="src/StockScreener.Data/StockScreener.Data.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StockScreener.Tests/StockScreener.Tests.csproj" />
+  </Folder>
+</Solution>
