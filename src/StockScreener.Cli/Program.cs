@@ -22,11 +22,17 @@ class Program
         DotNetEnv.Env.Load();
 
         var host = Host.CreateDefaultBuilder(args)
-            .UseContentRoot(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..")))
+            .UseContentRoot(AppContext.BaseDirectory)
             .ConfigureAppConfiguration((ctx, cfg) =>
             {
-                var appSettingsPath = Path.Combine(ctx.HostingEnvironment.ContentRootPath, "appsettings.json");
-                cfg.AddJsonFile(appSettingsPath, optional: true, reloadOnChange: true);
+                // In a published app, appsettings.json is copied next to the executable.
+                var publishedAppSettingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+                cfg.AddJsonFile(publishedAppSettingsPath, optional: true, reloadOnChange: true);
+
+                // Dev-time fallback (dotnet run): load from project directory.
+                var devAppSettingsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "appsettings.json"));
+                cfg.AddJsonFile(devAppSettingsPath, optional: true, reloadOnChange: true);
+
                 cfg.AddEnvironmentVariables();
             })
             .ConfigureLogging(logging =>

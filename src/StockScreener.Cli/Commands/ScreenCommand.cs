@@ -121,7 +121,8 @@ public sealed class ScreenCommand(
 
         try
         {
-            ScreenProgress last = new("", 0, tickers.Length);
+            var included = 0;
+            var skipped = 0;
 
             results = await AnsiConsole.Progress()
                 .AutoClear(true)
@@ -137,11 +138,18 @@ public sealed class ScreenCommand(
 
                     var progress = new Progress<ScreenProgress>(p =>
                     {
-                        last = p;
                         task.Value = p.Completed;
-                        task.Description = string.IsNullOrWhiteSpace(p.Ticker)
-                            ? $"Screening tickers ({p.Completed}/{p.Total})"
-                            : $"Screening [bold]{Markup.Escape(p.Ticker)}[/] ({p.Completed}/{p.Total})";
+
+                        if (p.Disposition == ScreenDisposition.Included)
+                            included++;
+                        else
+                            skipped++;
+
+                        var head = string.IsNullOrWhiteSpace(p.Ticker)
+                            ? "Screening"
+                            : $"Screening [bold]{Markup.Escape(p.Ticker)}[/]";
+
+                        task.Description = $"{head} ({p.Completed}/{p.Total})  [grey]included={included} skipped={skipped}[/]";
                     });
 
                     var req = new ScreenRequest
@@ -155,7 +163,6 @@ public sealed class ScreenCommand(
 
                     var r = await engine.ScreenAsync(req, cancellationToken, progress);
 
-                    // Ensure the bar completes even if progress callbacks didn't fire for some edge case.
                     task.Value = tickers.Length;
                     task.StopTask();
 

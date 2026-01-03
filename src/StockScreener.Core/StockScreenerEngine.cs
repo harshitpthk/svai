@@ -1,6 +1,16 @@
 ﻿namespace StockScreener.Core;
 
-public sealed record ScreenProgress(string Ticker, int Completed, int Total);
+public enum ScreenDisposition
+{
+    Included,
+    SkippedBlank,
+    SkippedNoFundamentals,
+    SkippedNoPrices,
+    SkippedFilteredOut,
+    Failed
+}
+
+public sealed record ScreenProgress(string Ticker, int Completed, int Total, ScreenDisposition Disposition);
 
 public class StockScreenerEngine
 {
@@ -49,71 +59,107 @@ public class StockScreenerEngine
             );
         }
 
-        var results = new List<ScreenResult>(req.Tickers.Count);
-
         var total = req.Tickers.Count;
         var completed = 0;
+
+        // Bounded concurrency. Keep conservative because providers may rate-limit.
+        var maxConcurrency = Math.Min(Environment.ProcessorCount, 8);
+
+        var results = new List<ScreenResult>(req.Tickers.Count);
+        var gate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+        var tasks = new List<Task>(req.Tickers.Count);
+        var resultsLock = new object();
 
         foreach (var raw in req.Tickers)
         {
             ct.ThrowIfCancellationRequested();
+            await gate.WaitAsync(ct);
 
-            completed++;
-
-            if (string.IsNullOrWhiteSpace(raw))
+            tasks.Add(Task.Run(async () =>
             {
-                progress?.Report(new ScreenProgress("", completed, total));
-                continue;
-            }
+                string ticker = "";
+                ScreenDisposition disposition = ScreenDisposition.Failed;
 
-            var t = raw.Trim().ToUpperInvariant();
-            progress?.Report(new ScreenProgress(t, completed, total));
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        disposition = ScreenDisposition.SkippedBlank;
+                        return;
+                    }
 
-            Fundamentals? f;
-            IReadOnlyList<PriceBar> p;
+                    ticker = raw.Trim().ToUpperInvariant();
 
-            try
-            {
-                f = await _fundamentals.GetAsync(t, ct);
-                if (f is null) continue;
+                    Fundamentals? f;
+                    IReadOnlyList<PriceBar> p;
 
-                p = await _prices.GetDailyAsync(t, req.Start, req.End, ct);
-                if (p.Count == 0) continue;
-            }
-            catch
-            {
-                // v0 engine: swallow per-ticker errors and continue.
-                continue;
-            }
+                    try
+                    {
+                        f = await _fundamentals.GetAsync(ticker, ct);
+                        if (f is null)
+                        {
+                            disposition = ScreenDisposition.SkippedNoFundamentals;
+                            return;
+                        }
 
-            // Apply optional filters before doing any optional/expensive work (like options).
-            if (req.Filters is not null && !req.Filters.Matches(f, p))
-                continue;
+                        p = await _prices.GetDailyAsync(ticker, req.Start, req.End, ct);
+                        if (p.Count == 0)
+                        {
+                            disposition = ScreenDisposition.SkippedNoPrices;
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        disposition = ScreenDisposition.Failed;
+                        return;
+                    }
 
-            // Options can be expensive / unavailable; treat null as fine.
-            OptionsSnapshot? opt = null;
-            try
-            {
-                opt = await _options.GetSnapshotAsync(t, ct);
-            }
-            catch
-            {
-                opt = null;
-            }
+                    // Apply optional filters before doing any optional/expensive work (like options).
+                    if (req.Filters is not null && !req.Filters.Matches(f, p))
+                    {
+                        disposition = ScreenDisposition.SkippedFilteredOut;
+                        return;
+                    }
 
-            var s = Scoring.Compute(f, p, opt, m, req.Weights);
+                    // Options can be expensive / unavailable; treat null as fine.
+                    OptionsSnapshot? opt = null;
+                    try
+                    {
+                        opt = await _options.GetSnapshotAsync(ticker, ct);
+                    }
+                    catch
+                    {
+                        opt = null;
+                    }
 
-            results.Add(new ScreenResult
-            {
-                Ticker = t,
-                Fundamentals = f,
-                Prices = p,
-                Score = s,
-                Macro = m,
-                Options = opt
-            });
+                    var s = Scoring.Compute(f, p, opt, m, req.Weights);
+
+                    lock (resultsLock)
+                    {
+                        results.Add(new ScreenResult
+                        {
+                            Ticker = ticker,
+                            Fundamentals = f,
+                            Prices = p,
+                            Score = s,
+                            Macro = m,
+                            Options = opt
+                        });
+                    }
+
+                    disposition = ScreenDisposition.Included;
+                }
+                finally
+                {
+                    var done = Interlocked.Increment(ref completed);
+                    progress?.Report(new ScreenProgress(ticker, done, total, disposition));
+                    gate.Release();
+                }
+            }, ct));
         }
 
+        await Task.WhenAll(tasks);
         return results;
     }
 }
