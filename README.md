@@ -1,4 +1,4 @@
-# svai (Stock Screener)
+# svai (Stock Screener focused on Value)
 
 A small .NET CLI for fetching market data and running a v0 screening workflow (prices + fundamentals, with optional macro/options inputs).
 
