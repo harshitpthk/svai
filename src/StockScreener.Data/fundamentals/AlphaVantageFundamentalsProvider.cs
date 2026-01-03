@@ -37,8 +37,23 @@ public sealed class AlphaVantageFundamentalsProvider(
         using var resp = await http.SendAsync(req, ct);
         resp.EnsureSuccessStatusCode();
 
-        var root = await resp.Content.ReadFromJsonAsync<OverviewResponse>(cancellationToken: ct)
-            ?? throw new InvalidOperationException("Empty Alpha Vantage response");
+        // Read the raw JSON first so we can emit useful diagnostics if parsing succeeds but Symbol is empty.
+        var rawJson = await resp.Content.ReadAsStringAsync(ct);
+
+        OverviewResponse? root = null;
+        try
+        {
+            root = System.Text.Json.JsonSerializer.Deserialize<OverviewResponse>(rawJson);
+        }
+        catch (Exception ex)
+        {
+            // Avoid logging secrets: do NOT log the full URL (contains apikey).
+            logger.LogWarning(ex, "Failed to parse AlphaVantage fundamentals JSON for {Ticker}", t);
+            throw;
+        }
+
+        if (root is null)
+            throw new InvalidOperationException("Empty Alpha Vantage response");
 
         if (!string.IsNullOrWhiteSpace(root.Note))
             throw new InvalidOperationException($"Alpha Vantage throttled: {root.Note}");
@@ -46,9 +61,20 @@ public sealed class AlphaVantageFundamentalsProvider(
         if (!string.IsNullOrWhiteSpace(root.ErrorMessage))
             throw new InvalidOperationException($"Alpha Vantage error: {root.ErrorMessage}");
 
+        if (!string.IsNullOrWhiteSpace(root.Information))
+            throw new InvalidOperationException($"Alpha Vantage throttled: {root.Information}");
+
         // Alpha Vantage returns an empty object for unknown symbols.
         if (string.IsNullOrWhiteSpace(root.Symbol))
+        {
+            // Log a small snippet (trimmed) for debugging. Bodies do not contain the API key.
+            var snippet = rawJson.Length <= 600 ? rawJson : rawJson[..600] + "...";
+            logger.LogWarning(
+                "AlphaVantage fundamentals missing Symbol for {Ticker}. Body snippet: {Snippet}",
+                t,
+                snippet);
             return null;
+        }
 
         // Map into our simplified Fundamentals record.
         // Many fields may be missing; we fall back to reasonable defaults.
@@ -98,6 +124,8 @@ public sealed class AlphaVantageFundamentalsProvider(
 
         [System.Text.Json.Serialization.JsonPropertyName("Error Message")]
         public string? ErrorMessage { get; set; }
+
+        public string? Information { get; set; }
 
         public string? Symbol { get; set; }
         public string? Sector { get; set; }

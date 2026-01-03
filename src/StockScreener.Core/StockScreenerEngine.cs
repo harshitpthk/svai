@@ -7,7 +7,16 @@ public enum ScreenDisposition
     SkippedNoFundamentals,
     SkippedNoPrices,
     SkippedFilteredOut,
-    Failed
+    Failed,
+    FailedFundamentals,
+    FailedPrices
+}
+
+public enum NormalizationMode
+{
+    None,
+    GlobalZScore,
+    SectorZScore
 }
 
 public sealed record ScreenProgress(string Ticker, int Completed, int Total, ScreenDisposition Disposition);
@@ -63,7 +72,12 @@ public class StockScreenerEngine
         var completed = 0;
 
         // Bounded concurrency. Keep conservative because providers may rate-limit.
-        var maxConcurrency = Math.Min(Environment.ProcessorCount, 8);
+        // AlphaVantage free tier is extremely burst-sensitive (1 req/sec). Cap hard when it's in use.
+        var usingAlphaVantageFundamentals = _fundamentals.GetType().Name.Contains("AlphaVantage", StringComparison.OrdinalIgnoreCase);
+
+        var maxConcurrency = usingAlphaVantageFundamentals
+            ? 1
+            : Math.Min(Environment.ProcessorCount, 8);
 
         var results = new List<ScreenResult>(req.Tickers.Count);
         var gate = new SemaphoreSlim(maxConcurrency, maxConcurrency);
@@ -96,12 +110,27 @@ public class StockScreenerEngine
                     try
                     {
                         f = await _fundamentals.GetAsync(ticker, ct);
+
+                        if (usingAlphaVantageFundamentals)
+                        {
+                            // AlphaVantage free tier is ~1 request/sec. Even with maxConcurrency=1, add spacing.
+                            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                        }
+
                         if (f is null)
                         {
                             disposition = ScreenDisposition.SkippedNoFundamentals;
                             return;
                         }
+                    }
+                    catch
+                    {
+                        disposition = ScreenDisposition.FailedFundamentals;
+                        return;
+                    }
 
+                    try
+                    {
                         p = await _prices.GetDailyAsync(ticker, req.Start, req.End, ct);
                         if (p.Count == 0)
                         {
@@ -111,7 +140,7 @@ public class StockScreenerEngine
                     }
                     catch
                     {
-                        disposition = ScreenDisposition.Failed;
+                        disposition = ScreenDisposition.FailedPrices;
                         return;
                     }
 
@@ -160,6 +189,15 @@ public class StockScreenerEngine
         }
 
         await Task.WhenAll(tasks);
+
+        if (req.NormalizationMode != NormalizationMode.None && results.Count > 1)
+        {
+            // Second pass: normalize metrics over the *run universe* and recompute scores.
+            // Keep macro/options logic as-is; only value/quality/momentum are z-scored.
+            var normalized = Scoring.NormalizeAndRescore(results, req.Weights, req.NormalizationMode);
+            return normalized;
+        }
+
         return results;
     }
 }
@@ -183,6 +221,8 @@ public sealed class ScreenRequest
     public required ScoringWeights Weights { get; init; }
 
     public ScreenFilters? Filters { get; init; }
+
+    public NormalizationMode NormalizationMode { get; init; } = NormalizationMode.None;
 }
 
 public sealed record ScreenFilters(

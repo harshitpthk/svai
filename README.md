@@ -4,10 +4,10 @@ A small .NET CLI for fetching market data and running a v0 screening workflow (p
 
 ## Solution layout
 
-- `src/StockScreener.Cli/`  CLI app (`svai`) built with Spectre.Console.Cli
-- `src/StockScreener.Core/`  domain models + scoring + orchestration (`StockScreenerEngine`)
-- `src/StockScreener.Data/`  data providers (prices, fundamentals, macro, options)
-- `tests/StockScreener.Tests/`  unit tests (xUnit)
+- `src/StockScreener.Cli/` — CLI app (`svai`) built with Spectre.Console.Cli
+- `src/StockScreener.Core/` — domain models + scoring + orchestration (`StockScreenerEngine`)
+- `src/StockScreener.Data/` — data providers (prices, fundamentals, macro, options)
+- `tests/StockScreener.Tests/` — unit tests (xUnit)
 
 ## Prerequisites
 
@@ -101,6 +101,22 @@ Explain a single ticker (factor breakdown + the inputs used):
 
 ```bash
 dotnet run --project src/StockScreener.Cli/StockScreener.Cli.csproj -- screen AAPL,MSFT,NVDA --days 90 --explain MSFT
+```
+
+#### Normalization / z-scoring
+
+By default, scoring uses raw heuristic inputs.
+
+You can optionally normalize inputs using **per-run z-scores** (computed only over the tickers in the current `screen` invocation):
+
+- `--normalize none` (default)
+- `--normalize global` — z-score across all tickers in the run
+- `--normalize sector` — z-score within each sector (falls back to global if the sector sample is too small)
+
+Example:
+
+```bash
+dotnet run --project src/StockScreener.Cli/StockScreener.Cli.csproj -- screen AAPL,MSFT,NVDA,GOOG --days 90 --normalize global
 ```
 
 #### Simple filters

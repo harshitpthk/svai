@@ -22,7 +22,7 @@ This repository is a .NET solution organized into three main layers:
 
 ### Known gaps / limitations
 
-- Scoring is intentionally a toy heuristic (not normalized / not sector-zscored).
+- Scoring is intentionally a toy heuristic (not fully sector-normalized across a large universe yet).
 - Options data can be unavailable on some Polygon plans (403 entitlement). The config fallback provider returns null.
 - FRED macro snapshots can intermittently error per-series; macro is treated as optional and falls back to neutral values.
 
@@ -86,8 +86,15 @@ Defined in `src/StockScreener.Core/Abstractions.cs`:
 
 Implemented in `src/StockScreener.Core/Scoring.cs`:
 
-- `Scoring.Compute(...)` — returns a weighted `Score`
+- `Scoring.Compute(...)` — returns a weighted `Score` (raw heuristic inputs)
 - `Scoring.Explain(...)` — mirrors compute logic and returns a breakdown (raw components + weighted score)
+
+Optional normalization (per-run z-scores):
+
+- `Scoring.NormalizeAndRescore(...)` rescales **value/quality/momentum** inputs using z-scores computed over the tickers in the current `screen` run.
+  - Modes:
+    - `GlobalZScore` — z-score across all tickers in the run
+    - `SectorZScore` — z-score within each sector (falls back to global for small sector samples)
 
 Macro impact is a small heuristic (`MacroSectorTilt`) based on sector + macro snapshot.
 
@@ -100,6 +107,7 @@ Implemented in `src/StockScreener.Core/StockScreenerEngine.cs`.
 - `ScreenRequest`
   - `Tickers`, `Start`, `End`, `Weights`
   - `Filters` (optional)
+  - `NormalizationMode` (optional; defaults to `None`)
 
 ### Outputs
 
@@ -116,6 +124,8 @@ Implemented in `src/StockScreener.Core/StockScreenerEngine.cs`.
   - Apply `ScreenFilters` (if provided) before doing any optional/expensive work (options).
   - Best-effort fetch options snapshot (null is acceptable).
   - Compute score.
+- If `NormalizationMode != None`:
+  - Do a second pass over the in-memory results and recompute scores using per-run z-scores.
 
 ### Progress reporting
 
@@ -184,6 +194,10 @@ Filters are applied in `StockScreenerEngine` before options fetch and scoring.
   - `Scoring:Weights:Options`
   - `Scoring:Weights:Macro`
 - Supports `--explain <TICKER>` to print a breakdown for a ticker from the result set
+- Supports `--normalize <MODE>`:
+  - `none` (default)
+  - `global`
+  - `sector`
 
 ## Provider selection
 
@@ -247,7 +261,7 @@ flowchart TD
     IFund["IFundamentalsProvider"]
     IMacro["IMacroDataProvider"]
     IOpt["IOptionsDataProvider"]
-    Sc["Scoring.Compute/Explain"]
+    Sc["Scoring.Compute/Explain\n(+ optional per-run z-score rescore)"]
     Types["Records: PriceBar, Fundamentals,\nMacroSnapshot, OptionsSnapshot, Score"]
   end
 

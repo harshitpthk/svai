@@ -43,20 +43,28 @@ class Program
                 // Keep CLI output clean by default.
                 logging.SetMinimumLevel(LogLevel.Warning);
 
-                // Still allow HttpClientFactory internal warnings/errors through.
-                logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+                // Allow network logging (emitted at Information) when enabled.
+                // Still keep this quiet by default via global min level; the handler itself gates on INetworkLogContext.
+                logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Information);
             })
             .ConfigureServices((ctx, services) =>
             {
                 services.AddMemoryCache();
 
+                // Network logging (opt-in per invocation via AsyncLocal).
+                services.AddSingleton<INetworkLogContext, NetworkLogContext>();
+                services.AddTransient<NetworkLoggingHttpMessageHandler>();
+
                 // Enables typed HttpClient injection into providers.
                 services.AddHttpClient();
 
                 // Register all price providers (we'll choose at runtime).
-                services.AddHttpClient<StockScreener.Data.Price.YahooPriceProvider>();
-                services.AddHttpClient<StockScreener.Data.Price.StooqPriceProvider>();
-                services.AddHttpClient<StockScreener.Data.Price.AlphaVantagePriceProvider>();
+                services.AddHttpClient<StockScreener.Data.Price.YahooPriceProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
+                services.AddHttpClient<StockScreener.Data.Price.StooqPriceProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
+                services.AddHttpClient<StockScreener.Data.Price.AlphaVantagePriceProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
 
                 services.AddSingleton<IPriceDataProvider>(sp =>
                 {
@@ -73,7 +81,8 @@ class Program
                 });
 
                 // Fundamentals providers
-                services.AddHttpClient<AlphaVantageFundamentalsProvider>();
+                services.AddHttpClient<AlphaVantageFundamentalsProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
                 services.AddSingleton<ConfigFundamentalsProvider>();
 
                 services.AddSingleton<IFundamentalsProvider>(sp =>
@@ -102,7 +111,8 @@ class Program
                 });
 
                 // Macro providers
-                services.AddHttpClient<FredMacroDataProvider>();
+                services.AddHttpClient<FredMacroDataProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
                 services.AddSingleton<ConfigMacroDataProvider>();
 
                 services.AddSingleton<IMacroDataProvider>(sp =>
@@ -131,7 +141,8 @@ class Program
                 });
 
                 // Options providers
-                services.AddHttpClient<PolygonOptionsDataProvider>();
+                services.AddHttpClient<PolygonOptionsDataProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
                 services.AddSingleton<ConfigStockOptionsDataProvider>();
 
                 services.AddSingleton<IOptionsDataProvider>(sp =>
