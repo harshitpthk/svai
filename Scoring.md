@@ -6,6 +6,7 @@ This document explains how the scoring pipeline in `StockScreener.Core` is inten
 > - `Scoring.Compute(...)` produces a final `Score`.
 > - `Scoring.Explain(...)` mirrors the same calculation but returns intermediate values so the CLI can show *why* a ticker scored the way it did.
 > - The current implementation is intentionally a **toy heuristic** (not sector-normalized, not z-scored).
+> - Fundamentals are sourced from **FMP** (Financial Modeling Prep) by default, or AlphaVantage as a fallback. The `Fundamentals` record shape is the same regardless of provider.
 
 ---
 

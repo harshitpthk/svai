@@ -83,6 +83,8 @@ class Program
                 // Fundamentals providers
                 services.AddHttpClient<AlphaVantageFundamentalsProvider>()
                     .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
+                services.AddHttpClient<FmpFundamentalsProvider>()
+                    .AddHttpMessageHandler<NetworkLoggingHttpMessageHandler>();
                 services.AddSingleton<ConfigFundamentalsProvider>();
 
                 services.AddSingleton<IFundamentalsProvider>(sp =>
@@ -95,18 +97,24 @@ class Program
                     {
                         return which.ToLowerInvariant() switch
                         {
+                            "fmp" or "financialmodelingprep" => sp.GetRequiredService<FmpFundamentalsProvider>(),
                             "alphavantage" or "alpha" or "alpha-vantage" => sp.GetRequiredService<AlphaVantageFundamentalsProvider>(),
                             "config" => sp.GetRequiredService<ConfigFundamentalsProvider>(),
                             _ => sp.GetRequiredService<ConfigFundamentalsProvider>()
                         };
                     }
 
-                    // 2) Fallback: prefer AlphaVantage if key present
-                    var apiKey = cfg["Providers:AlphaVantageApiKey"];
-                    if (!string.IsNullOrWhiteSpace(apiKey))
+                    // 2) Fallback: prefer FMP if key present (more generous free tier)
+                    var fmpKey = cfg["Providers:FmpApiKey"];
+                    if (!string.IsNullOrWhiteSpace(fmpKey))
+                        return sp.GetRequiredService<FmpFundamentalsProvider>();
+
+                    // 3) Fallback: AlphaVantage if key present
+                    var avKey = cfg["Providers:AlphaVantageApiKey"];
+                    if (!string.IsNullOrWhiteSpace(avKey))
                         return sp.GetRequiredService<AlphaVantageFundamentalsProvider>();
 
-                    // 3) Final fallback
+                    // 4) Final fallback
                     return sp.GetRequiredService<ConfigFundamentalsProvider>();
                 });
 

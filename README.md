@@ -151,7 +151,7 @@ Providers are selected via:
 Supported implementations (current):
 
 - Prices: `Stooq`, `Yahoo` (unofficial), `AlphaVantage`
-- Fundamentals: `AlphaVantage` (recommended) or config fallback
+- Fundamentals: `Fmp` (recommended, default), `AlphaVantage`, or config fallback
 - Macro: `Fred` or config fallback
 - Options: `Polygon` (may require paid entitlements) or config fallback (returns null)
 
@@ -165,12 +165,13 @@ This project loads environment variables via .NET configuration and (for local d
 
 Example keys:
 
-- `Providers__AlphaVantageApiKey`
-- `Providers__FredApiKey`
-- `Providers__PolygonApiKey`
+- `Providers__FmpApiKey` — [Financial Modeling Prep](https://financialmodelingprep.com/) (free tier: 250 req/day)
+- `Providers__AlphaVantageApiKey` — [Alpha Vantage](https://www.alphavantage.co/) (free tier: 25 req/day)
+- `Providers__FredApiKey` — [FRED](https://fred.stlouisfed.org/)
+- `Providers__PolygonApiKey` — [Polygon.io](https://polygon.io/)
 
 ## Notes
 
 - Scoring is intentionally naive (toy heuristics). It will evolve toward normalized, sector-aware factors.
-- Some APIs have free-tier rate limits.
+- Some APIs have free-tier rate limits. FMP (250 req/day) is recommended over AlphaVantage (25 req/day) for fundamentals.
 - Polygon options snapshots may return `403 NOT_AUTHORIZED` depending on your plan; the CLI degrades gracefully (options snapshot will be `none`).

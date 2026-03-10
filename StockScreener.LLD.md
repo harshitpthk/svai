@@ -23,6 +23,8 @@ This repository is a .NET solution organized into three main layers:
 ### Known gaps / limitations
 
 - Scoring is intentionally a toy heuristic (not fully sector-normalized across a large universe yet).
+- FMP `ratios-ttm` / `key-metrics-ttm` may return 402 for some tickers on the free tier; the provider gracefully falls back to profile-only data.
+- AlphaVantage fundamentals are still available but have a 25 req/day free-tier limit (1 req/sec with a forced delay). FMP (250 req/day) is the default.
 - Options data can be unavailable on some Polygon plans (403 entitlement). The config fallback provider returns null.
 - FRED macro snapshots can intermittently error per-series; macro is treated as optional and falls back to neutral values.
 
@@ -212,6 +214,7 @@ Selection rules:
 
 1. If an explicit provider is configured, it is used.
 2. Otherwise, some providers prefer a "real" implementation when the corresponding API key is present.
+   - For fundamentals: FMP is preferred over AlphaVantage (more generous free tier).
 3. Final fallback is a safe, local/config provider.
 
 ## Data providers (high-level)
@@ -221,7 +224,8 @@ Selection rules:
   - `YahooPriceProvider` (unofficial)
   - `AlphaVantagePriceProvider`
 - Fundamentals:
-  - `AlphaVantageFundamentalsProvider`
+  - `FmpFundamentalsProvider` (recommended; 250 req/day free tier; uses `/stable/profile` + `/stable/key-metrics-ttm` + `/stable/ratios-ttm`)
+  - `AlphaVantageFundamentalsProvider` (25 req/day free tier; needs 1 req/sec delay)
   - `ConfigFundamentalsProvider`
 - Macro:
   - `FredMacroDataProvider`
@@ -269,6 +273,7 @@ flowchart TD
     Stooq["StooqPriceProvider"]
     Yahoo["YahooPriceProvider"]
     AVP["AlphaVantagePriceProvider"]
+    FMP["FmpFundamentalsProvider\n(recommended)"]
     AVF["AlphaVantageFundamentalsProvider"]
     FundCfg["ConfigFundamentalsProvider"]
     Fred["FredMacroDataProvider"]
@@ -294,6 +299,7 @@ flowchart TD
   Stooq --> IPrice
   Yahoo --> IPrice
   AVP --> IPrice
+  FMP --> IFund
   AVF --> IFund
   FundCfg --> IFund
   Fred --> IMacro

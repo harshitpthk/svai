@@ -42,6 +42,7 @@ public sealed class DoctorCommand(
                 var hasAlphaKey = !string.IsNullOrWhiteSpace(config["Providers:AlphaVantageApiKey"]);
                 var hasFredKey = !string.IsNullOrWhiteSpace(config["Providers:FredApiKey"]);
                 var hasPolygonKey = !string.IsNullOrWhiteSpace(config["Providers:PolygonApiKey"]);
+                var hasFmpKey = !string.IsNullOrWhiteSpace(config["Providers:FmpApiKey"]);
 
                 var grid = new Grid();
                 grid.AddColumn();
@@ -67,6 +68,7 @@ public sealed class DoctorCommand(
 
                 grid.AddEmptyRow();
                 grid.AddRow("[bold]AlphaVantageApiKey[/]", MarkBool(hasAlphaKey));
+                grid.AddRow("[bold]FmpApiKey[/]", MarkBool(hasFmpKey));
                 grid.AddRow("[bold]FredApiKey[/]", MarkBool(hasFredKey));
                 grid.AddRow("[bold]PolygonApiKey[/]", MarkBool(hasPolygonKey));
 
@@ -81,6 +83,7 @@ public sealed class DoctorCommand(
                         "Providers:OptionsProvider",
                         "Providers:MacroProvider",
                         "Providers:AlphaVantageApiKey",
+                        "Providers:FmpApiKey",
                         "Providers:FredApiKey",
                         "Providers:PolygonApiKey",
                     };
