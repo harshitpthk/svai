@@ -200,16 +200,26 @@ class Program
             });
 
             config.AddCommand<PricesCommand>("prices")
-                .WithDescription("Fetch and display daily OHLCV bars for a ticker.");
+                .WithDescription("Fetch and display daily OHLCV bars for a ticker.")
+                .WithExample("prices", "AAPL", "--days", "5")
+                .WithExample("prices", "MSFT", "--start", "2025-01-01", "--end", "2025-03-01");
 
             config.AddCommand<OptionsCommand>("options")
-                .WithDescription("Fetch and display a lightweight options snapshot for a ticker.");
+                .WithDescription("Fetch and display a lightweight options snapshot for a ticker.")
+                .WithExample("options", "AAPL");
 
             config.AddCommand<DoctorCommand>("doctor")
-                .WithDescription("Show provider selection and whether required API keys are present.");
+                .WithDescription("Show provider selection and whether required API keys are present.")
+                .WithExample("doctor")
+                .WithExample("doctor", "--verbose");
 
             config.AddCommand<ScreenCommand>("screen")
-                .WithDescription("Run a v0 screen over one or more tickers using prices + fundamentals.");
+                .WithDescription("Run a v0 screen over one or more tickers using prices + fundamentals.")
+                .WithExample("screen", "AAPL,MSFT,NVDA,GOOG", "--days", "90", "--top", "5")
+                .WithExample("screen", "AAPL,MSFT,NVDA", "--days", "90", "--explain", "MSFT")
+                .WithExample("screen", "AAPL,MSFT,NVDA,GOOG,AMZN,META,TSLA,JPM", "--days", "90", "--normalize", "global")
+                .WithExample("screen", "AAPL,MSFT,NVDA", "--days", "90", "--max-pe", "30", "--min-roic", "0.1")
+                .WithExample("screen", "AAPL,MSFT,NVDA", "--days", "90", "--normalize", "sector", "--min-momentum", "0");
 
             // Commands will be wired after implementations exist.
             // config.AddBranch("ingest", b => { /* ... */ });
